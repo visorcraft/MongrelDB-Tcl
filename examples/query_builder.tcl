@@ -1,4 +1,4 @@
-# Example: native query builder (range + primary-key lookups) in Tcl.
+# Example: native query builder (range_f64 + primary-key lookups) in Tcl.
 #
 # Run with:
 #   tclsh examples/query_builder.tcl
@@ -59,8 +59,9 @@ if {[catch {
     mongreldb::put $db $table {1 5 2 Eve   3 12.5}
     puts "Inserted 5 rows"
 
-    # Range query: 60 <= score <= 90 (both inclusive).
-    set rangeCond [mongreldb::condition range [dict create column_id 3 lo 60 hi 150]]
+    # Range query: 60 <= score <= 90 (both inclusive). The score column is
+    # float64, so use range_f64 (range targets integer columns).
+    set rangeCond [mongreldb::condition range_f64 [dict create column_id 3 lo 60.0 hi 150.0 lo_inclusive 1 hi_inclusive 1]]
     set res [mongreldb::query $db $table [list $rangeCond]]
     puts "  range \[60, 150\] on score: [llength [dict get $res rows]] rows"
 

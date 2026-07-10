@@ -447,7 +447,8 @@ proc ::mongreldb::_serializeInnerOp {kind inner} {
 # ── Query ─────────────────────────────────────────────────────────────────
 
 # Build a normalized condition (translates friendly aliases). type is one of
-# pk, bitmap_eq, range, fm_contains, is_null, is_not_null. params is a dict.
+# pk, bitmap_eq, range, range_f64, fm_contains, is_null, is_not_null. params is
+# a dict. Use range for integer columns and range_f64 for float64 columns.
 proc ::mongreldb::condition {type params} {
     switch -- $type {
         pk {
@@ -461,6 +462,14 @@ proc ::mongreldb::condition {type params} {
             if {[dict exists $params lo]} { dict set d lo [dict get $params lo] }
             if {[dict exists $params hi]} { dict set d hi [dict get $params hi] }
             return [dict create range $d]
+        }
+        range_f64 {
+            set d [dict create column_id [dict get $params column_id]]
+            if {[dict exists $params lo]} { dict set d lo [dict get $params lo] }
+            if {[dict exists $params hi]} { dict set d hi [dict get $params hi] }
+            if {[dict exists $params lo_inclusive]} { dict set d lo_inclusive [dict get $params lo_inclusive] }
+            if {[dict exists $params hi_inclusive]} { dict set d hi_inclusive [dict get $params hi_inclusive] }
+            return [dict create range_f64 $d]
         }
         fm_contains {
             # value -> pattern alias

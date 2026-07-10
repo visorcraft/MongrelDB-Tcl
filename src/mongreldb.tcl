@@ -464,7 +464,11 @@ proc ::mongreldb::condition {type params} {
         }
         fm_contains {
             # value -> pattern alias
-            set pat [dict exists $params pattern] ? [dict get $params pattern] : [dict get $params value]
+            if {[dict exists $params pattern]} {
+                set pat [dict get $params pattern]
+            } else {
+                set pat [dict get $params value]
+            }
             return [dict create fm_contains [dict create column_id [dict get $params column_id] pattern $pat]]
         }
         is_null {

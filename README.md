@@ -7,7 +7,7 @@
 <p align="center">
   <b>Pure Tcl HTTP client for MongrelDB - embedded+server database with SQL, vector search, full-text search, and AI-native retrieval.</b>
   <br />
-  Built on the Tcl 8.6+ standard library (<code>http</code>, <code>json</code>). No external dependencies beyond a normal Tcl install.
+  Built on the Tcl 8.6+ standard library (<code>http</code>) plus <code>json</code> from <a href="https://core.tcl-lang.org/tcllib/">tcllib</a>. Requires <a href="https://core.tcl-lang.org/tcllib/">tcllib</a> for JSON support.
 </p>
 
 <p align="center">
@@ -25,7 +25,8 @@
 ## Requirements
 
 - **Tcl 8.6 or newer** (uses `tailcall`, `try`/`trap`, and `dict`)
-- The standard `http` and `json` packages (bundled with Tcl 8.6+)
+- The standard `http` package (bundled with Tcl 8.6+)
+- [`tcllib`](https://core.tcl-lang.org/tcllib/) for the `json` package (the `json` package is part of tcllib, not the Tcl core). Install via your OS package manager (e.g. `apt-get install tcllib`), Homebrew (`brew install tcl-tcllib`), or `teacup install json`.
 - A running [`mongreldb-server`](https://github.com/visorcraft/MongrelDB) daemon
 
 ## What It Provides
@@ -244,7 +245,7 @@ Contributions are welcome. Please:
 
 1. Open an issue first for non-trivial changes.
 2. Add focused tests near your change - the suite must stay green.
-3. Keep the code pure Tcl 8.6+, no external package dependencies.
+3. Keep the code pure Tcl 8.6+; the only external dependency allowed is `tcllib` (for the `json` package).
 4. Match the existing style: `mongreldb::` namespace, snake/camelCase commands.
 
 ## License

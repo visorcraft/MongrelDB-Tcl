@@ -25,7 +25,8 @@ jobs:
       - name: Install Tcl
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends tcl tcl-dev
+          # tcllib provides the 'json' package that mongreldb.tcl requires.
+          sudo apt-get install -y --no-install-recommends tcl tcl-dev tcllib
 
       - name: Verify package loads
         run: |

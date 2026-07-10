@@ -27,7 +27,7 @@ set table "tcl_example_crud_[clock seconds]"
 set url [if {[info exists ::env(MONGRELDB_URL)] && $::env(MONGRELDB_URL) ne {}} {
     set ::env(MONGRELDB_URL)
 } else {
-    set {http://127.0.0.1:8453}
+    list {http://127.0.0.1:8453}
 }]
 
 set db [mongreldb::connect $url]

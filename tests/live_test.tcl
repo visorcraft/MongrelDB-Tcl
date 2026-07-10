@@ -80,7 +80,7 @@ set g_have_daemon 0
 set url [if {[info exists ::env(MONGRELDB_URL)] && $::env(MONGRELDB_URL) ne {}} {
     set ::env(MONGRELDB_URL)
 } else {
-    set {http://127.0.0.1:8453}
+    list {http://127.0.0.1:8453}
 }]
 
 if {[catch {

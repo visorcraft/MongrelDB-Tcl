@@ -52,6 +52,8 @@ test test_create_table_body {
                     enum_variants [list active inactive paused] default_value active] \
         [dict create id 5 name retries ty int64 primary_key 0 nullable 0 default_value_json 3] \
         [dict create id 6 name created_at ty timestamp primary_key 0 nullable 0 default_expr now] \
+        [dict create id 7 name enabled ty bool primary_key 0 nullable 0 default_value_json true] \
+        [dict create id 8 name optional ty varchar primary_key 0 nullable 1 default_value_json null] \
     ]
     set constraintsJson {{"checks":[{"id":1,"name":"ck_status","expr":{"IsNotNull":4}}]}}
     set body [mongreldb::_createTableBody orders $cols $constraintsJson]
@@ -63,6 +65,8 @@ test test_create_table_body {
     check {[string first {"default_value":"active"} $body] >= 0} "body missing default_value"
     check {[string first {"default_value":3} $body] >= 0} "numeric default_value became a string"
     check {[string first {"default_expr":"now"} $body] >= 0} "body missing default_expr"
+    check {[string first {"default_value":true} $body] >= 0} "boolean default missing"
+    check {[string first {"default_value":null} $body] >= 0} "null default missing"
     check {[string first {"constraints":} $body] >= 0} "body missing constraints"
     check {[string first {"checks":} $body] >= 0} "body missing constraints.checks"
     check {[string first {"IsNotNull":4} $body] >= 0} "body missing check expression"

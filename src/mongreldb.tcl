@@ -39,7 +39,8 @@ namespace eval ::mongreldb {
 
     namespace export connect health tables createTable dropTable count \
                           put upsert delete deleteByPk transaction query \
-                          condition sql schema schemaFor close lastError
+                          condition sql schema schemaFor close lastError \
+                          historyRetentionEpochs earliestRetainedEpoch setHistoryRetentionEpochs
 }
 
 # ── Error handling ────────────────────────────────────────────────────────
@@ -291,6 +292,18 @@ proc ::mongreldb::health {db} {
     set ok 0
     if {![catch {_get $db health}]} { set ok 1 }
     return $ok
+}
+
+proc ::mongreldb::historyRetentionEpochs {db} {
+    dict get [::json::json2dict [_get $db history/retention]] history_retention_epochs
+}
+
+proc ::mongreldb::earliestRetainedEpoch {db} {
+    dict get [::json::json2dict [_get $db history/retention]] earliest_retained_epoch
+}
+
+proc ::mongreldb::setHistoryRetentionEpochs {db epochs} {
+    _request $db PUT history/retention "\{\"history_retention_epochs\":$epochs\}"
 }
 
 # List all table names.

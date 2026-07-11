@@ -44,28 +44,24 @@ proc check {cond msg} {
 # ── Tests ─────────────────────────────────────────────────────────────────
 
 # The create_table body must carry name, columns[] with id/name/ty/primary_key/
-# nullable, plus optional enum_variants and default_value when set.
+# nullable, optional enum_variants/default_value, and table checks.
 test test_create_table_body {
     set cols [list \
         [dict create id 1 name id ty int64 primary_key 1 nullable 0] \
-        [dict create id 4 name status ty varchar primary_key 0 nullable 0 \
+        [dict create id 4 name status ty enum primary_key 0 nullable 0 \
                     enum_variants [list active inactive paused] default_value active] \
     ]
-    # Serialize via the same code path the client uses.
-    set db [mongreldb::connect {http://127.0.0.1:8453}]
-    # Reconstruct the body the client would send by calling the private
-    # serializer pieces. We build a fake request body string.
-    set body "\{\"name\":\"orders\",\"columns\":\["
-    append body "\{\"id\":1,\"name\":\"id\",\"ty\":\"int64\",\"primary_key\":true,\"nullable\":false\}"
-    append body ","
-    append body "\{\"id\":4,\"name\":\"status\",\"ty\":\"varchar\",\"primary_key\":false,\"nullable\":false,\"enum_variants\":\[\"active\",\"inactive\",\"paused\"\],\"default_value\":\"active\"\}"
-    append body "\]\}"
+    set constraintsJson {{"checks":[{"id":1,"name":"ck_status","expr":{"IsNotNull":4}}]}}
+    set body [mongreldb::_createTableBody orders $cols $constraintsJson]
 
     check {[string first {"name":"orders"} $body] >= 0} "body missing table name"
     check {[string first {"ty":"int64"} $body] >= 0} "body missing column type"
     check {[string first {"primary_key":true} $body] >= 0} "body missing primary_key"
     check {[string first {enum_variants} $body] >= 0} "body missing enum_variants"
     check {[string first {"default_value":"active"} $body] >= 0} "body missing default_value"
+    check {[string first {"constraints":} $body] >= 0} "body missing constraints"
+    check {[string first {"checks":} $body] >= 0} "body missing constraints.checks"
+    check {[string first {"IsNotNull":4} $body] >= 0} "body missing check expression"
 }
 
 # The batch txn body must wrap ops in {"ops":[...]} and carry an idempotency

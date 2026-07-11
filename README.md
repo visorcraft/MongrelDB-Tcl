@@ -63,7 +63,8 @@ set cols [list \
     [dict create id 2 name customer ty varchar primary_key 0 nullable 0] \
     [dict create id 3 name amount   ty float64 primary_key 0 nullable 0] \
 ]
-mongreldb::createTable $db orders $cols
+set constraintsJson {{"checks":[{"id":1,"name":"ck_status","expr":{"IsNotNull":3}}]}}
+mongreldb::createTable $db orders $cols $constraintsJson
 
 # Insert rows (cells is an even-length list {colId value ...}).
 mongreldb::put $db orders {1 1 2 Alice 3 99.50}
@@ -137,12 +138,12 @@ at create time. Both are omitted from the wire JSON when left unset, so
 existing schemas are unaffected.
 
 ```tcl
-# A varchar column whose values must come from this fixed set.
+# An enum column whose values must come from this fixed set.
 # Wire emit: "enum_variants": ["active","inactive","paused"]
 set cols [list \
     [dict create id 1 name id       ty int64   primary_key 1 nullable 0] \
     [dict create id 2 name customer ty varchar primary_key 0 nullable 0] \
-    [dict create id 3 name status   ty varchar primary_key 0 nullable 0 \
+    [dict create id 3 name status   ty enum    primary_key 0 nullable 0 \
                enum_variants [list active inactive paused] default_value active] \
 ]
 mongreldb::createTable $db orders $cols
@@ -153,6 +154,8 @@ mongreldb::createTable $db orders $cols
 is enforced server-side, so a row whose value falls outside the listed variants
 surfaces as a `conflict` error on `mongreldb::put` /
 `mongreldb::transaction`.
+The optional fourth argument is a validated JSON object in the daemon's
+`constraints` shape. Its `checks` array is sent as `constraints.checks`.
 
 ## SQL
 
@@ -202,7 +205,7 @@ try {
 |---------|-------------|
 | `mongreldb::health db` | Check daemon health |
 | `mongreldb::tables db` | List table names |
-| `mongreldb::createTable db name cols` | Create a table |
+| `mongreldb::createTable db name cols ?constraintsJson?` | Create a table |
 | `mongreldb::dropTable db name` | Drop a table |
 | `mongreldb::count db table` | Row count |
 | `mongreldb::put db table cells key` | Insert a row |

@@ -300,10 +300,8 @@ proc ::mongreldb::tables {db} {
     return $data
 }
 
-# Create a table. columns is a list of column dicts, each with keys
-# id, name, ty, primary_key, nullable, and optionally enum_variants,
-# default_value. Returns the assigned table id (0 if none reported).
-proc ::mongreldb::createTable {db name columns} {
+# Build the create-table JSON once so the live path and wire test cannot drift.
+proc ::mongreldb::_createTableBody {name columns {constraintsJson {}}} {
     set body "\{\"name\":\"[_jsonEscape $name]\",\"columns\":\["
     set first 1
     foreach col $columns {
@@ -332,7 +330,23 @@ proc ::mongreldb::createTable {db name columns} {
         }
         append body "\}"
     }
-    append body "\]\}"
+    append body "\]"
+    set constraintsJson [string trim $constraintsJson]
+    if {$constraintsJson ne {}} {
+        if {[string index $constraintsJson 0] ne "\{" ||
+            [catch {::json::json2dict $constraintsJson}]} {
+            _error query {constraintsJson must be a valid JSON object}
+        }
+        append body ",\"constraints\":$constraintsJson"
+    }
+    append body "\}"
+    return $body
+}
+
+# Create a table. constraintsJson is an optional JSON object using the daemon's
+# TableConstraints shape, including constraints.checks.
+proc ::mongreldb::createTable {db name columns {constraintsJson {}}} {
+    set body [_createTableBody $name $columns $constraintsJson]
     set data [_post $db kit/create_table $body]
     if {[dict exists $data table_id]} {
         return [dict get $data table_id]

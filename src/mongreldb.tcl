@@ -506,6 +506,17 @@ proc ::mongreldb::condition {type params} {
     }
 }
 
+# Render a value as a JSON boolean. Tcl has no distinct boolean type, so accept
+# the usual truthy spellings (true/false, yes/no, 1/0, on/off). Anything that is
+# not a recognized false value is treated as true, mirroring Tcl's [expr].
+proc ::mongreldb::_jsonBool {v} {
+    set v [string tolower [string trim $v]]
+    if {$v eq "false" || $v eq "0" || $v eq "no" || $v eq "off" || $v eq {}} {
+        return false
+    }
+    return true
+}
+
 # Serialize a condition dict to JSON.
 proc ::mongreldb::_serializeCondition {cond} {
     set type [lindex [dict keys $cond] 0]
@@ -516,7 +527,13 @@ proc ::mongreldb::_serializeCondition {cond} {
         if {!$first} { append s "," }
         set first 0
         append s "\"$k\":"
-        append s [_jsonValue $v]
+        # The daemon deserializes lo_inclusive / hi_inclusive as booleans, so
+        # emit true/false rather than letting _jsonValue render a 1/0 integer.
+        if {$k eq "lo_inclusive" || $k eq "hi_inclusive"} {
+            append s [_jsonBool $v]
+        } else {
+            append s [_jsonValue $v]
+        }
     }
     append s "\}\}"
     return $s

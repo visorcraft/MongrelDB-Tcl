@@ -54,7 +54,7 @@ if {[catch {
     set cols [list \
         [dict create id 1 name id     ty int64   primary_key 1 nullable 0] \
         [dict create id 2 name name   ty varchar primary_key 0 nullable 0] \
-        [dict create id 3 name score  ty float64 primary_key 0 nullable 0 default_value 0.0] \
+        [dict create id 3 name score  ty float64 primary_key 0 nullable 0 default_value_json 0.0] \
         [dict create id 4 name status ty enum primary_key 0 nullable 0 \
                    enum_variants $statusVariants default_value active] \
     ]

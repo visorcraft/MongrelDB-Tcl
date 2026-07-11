@@ -252,7 +252,10 @@ proc ::mongreldb::_request {db method path {body {}}} {
             set decoded [::json::json2dict $data]
             if {[dict exists $decoded error]} {
                 set errObj [dict get $decoded error]
-                if {[dict exists $errObj message]} {
+                if {[catch {dict exists $errObj message} isObject] || !$isObject} {
+                    set message $errObj
+                    set ok 1
+                } elseif {[dict exists $errObj message]} {
                     set message [dict get $errObj message]
                     set ok 1
                 }

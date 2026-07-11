@@ -272,6 +272,7 @@ proc ::mongreldb::_request {db method path {body {}}} {
             set kind query
         }
         if {[string match -nocase {not found:*} $message]} { set kind not_found }
+        if {[string match -nocase {*not found*} $data]} { set kind not_found }
         _error $kind $message $status $code
     }
 

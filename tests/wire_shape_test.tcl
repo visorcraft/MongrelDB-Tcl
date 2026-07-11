@@ -50,6 +50,8 @@ test test_create_table_body {
         [dict create id 1 name id ty int64 primary_key 1 nullable 0] \
         [dict create id 4 name status ty enum primary_key 0 nullable 0 \
                     enum_variants [list active inactive paused] default_value active] \
+        [dict create id 5 name retries ty int64 primary_key 0 nullable 0 default_value_json 3] \
+        [dict create id 6 name created_at ty timestamp primary_key 0 nullable 0 default_expr now] \
     ]
     set constraintsJson {{"checks":[{"id":1,"name":"ck_status","expr":{"IsNotNull":4}}]}}
     set body [mongreldb::_createTableBody orders $cols $constraintsJson]
@@ -59,9 +61,23 @@ test test_create_table_body {
     check {[string first {"primary_key":true} $body] >= 0} "body missing primary_key"
     check {[string first {enum_variants} $body] >= 0} "body missing enum_variants"
     check {[string first {"default_value":"active"} $body] >= 0} "body missing default_value"
+    check {[string first {"default_value":3} $body] >= 0} "numeric default_value became a string"
+    check {[string first {"default_expr":"now"} $body] >= 0} "body missing default_expr"
     check {[string first {"constraints":} $body] >= 0} "body missing constraints"
     check {[string first {"checks":} $body] >= 0} "body missing constraints.checks"
     check {[string first {"IsNotNull":4} $body] >= 0} "body missing check expression"
+}
+
+test test_create_table_rejects_non_scalar_default_json {
+    set cols [list [dict create id 1 name bad ty int64 primary_key 0 nullable 0 \
+                              default_value_json {[]}]]
+    set threw 0
+    try {
+        mongreldb::_createTableBody bad $cols
+    } trap {MONGRELDB query} {} {
+        set threw 1
+    } on error {} {}
+    check {$threw == 1} "default_value_json must reject arrays and objects"
 }
 
 # The batch txn body must wrap ops in {"ops":[...]} and carry an idempotency

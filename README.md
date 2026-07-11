@@ -150,7 +150,8 @@ mongreldb::createTable $db orders $cols
 ```
 
 `enum_variants` is a Tcl list of strings; omitting it means "absent".
-`default_value` is a single string; omitting it means "absent". The constraint
+`default_value` is a string. Use `default_value_json` for raw null, boolean,
+or number defaults, and `default_expr` for dynamic `now` or `uuid`. The constraint
 is enforced server-side, so a row whose value falls outside the listed variants
 surfaces as a `conflict` error on `mongreldb::put` /
 `mongreldb::transaction`.

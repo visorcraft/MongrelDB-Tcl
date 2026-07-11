@@ -125,7 +125,9 @@ You should see the row count of 2.
 | `mongreldb::health` | GET `/health`; returns 1 when the daemon answers. |
 | `mongreldb::createTable` | POST `/kit/create_table`. Column `id`s are the on-wire identifiers. |
 | `enum_variants` | Optional. Constrains a text column to a fixed value set; server-enforced on commit. Omit = absent. |
-| `default_value` | Optional. Default value string for the column. Omit = absent. |
+| `default_value` | Optional string default. Omit = absent. |
+| `default_value_json` | Optional raw `null`, boolean, or number default, emitted as `default_value`. Caller must match the column type. |
+| `default_expr` | Optional dynamic `now` or `uuid` default. |
 | `mongreldb::put` | Single-op transaction: POST `/kit/txn` with one `put` op. `cells` is flattened to `[col_id, val, ...]`. |
 | `mongreldb::query` | Builds a `/kit/query` body. Conditions push down to native indexes. |
 | `projection {1 2}` | Server returns only those column ids, saving bandwidth. |

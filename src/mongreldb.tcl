@@ -325,8 +325,18 @@ proc ::mongreldb::_createTableBody {name columns {constraintsJson {}}} {
             }
             append body "\]"
         }
-        if {[dict exists $col default_value]} {
+        if {[dict exists $col default_value] && ![dict exists $col default_value_json]} {
             append body ",\"default_value\":\"[_jsonEscape [dict get $col default_value]]\""
+        }
+        if {[dict exists $col default_value_json]} {
+            set scalar [string trim [dict get $col default_value_json]]
+            if {![regexp {^(null|true|false|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)$} $scalar]} {
+                _error query {default_value_json must be null, boolean, or number JSON}
+            }
+            append body ",\"default_value\":$scalar"
+        }
+        if {[dict exists $col default_expr]} {
+            append body ",\"default_expr\":\"[_jsonEscape [dict get $col default_expr]]\""
         }
         append body "\}"
     }

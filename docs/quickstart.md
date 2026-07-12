@@ -125,7 +125,7 @@ You should see the row count of 2.
 | `mongreldb::health` | GET `/health`; returns 1 when the daemon answers. |
 | `mongreldb::createTable` | POST `/kit/create_table`. Column `id`s are the on-wire identifiers. |
 | `enum_variants` | Optional. Constrains a text column to a fixed value set; server-enforced on commit. Omit = absent. |
-| `default_value` | Optional string default. Omit = absent. |
+| `default_value` | Optional string default. Literal `"now"`/`"uuid"` strings go here; use `default_expr` only for dynamic defaults. Omit = absent. |
 | `default_value_json` | Optional raw `null`, boolean, or number default, emitted as `default_value`. Caller must match the column type. |
 | `default_expr` | Optional dynamic `now` or `uuid` default. |
 | `mongreldb::put` | Single-op transaction: POST `/kit/txn` with one `put` op. `cells` is flattened to `[col_id, val, ...]`. |
@@ -134,7 +134,30 @@ You should see the row count of 2.
 | `limit 100` | Caps the result; check the `truncated` key afterward. |
 | `mongreldb::count` | GET `/tables/{name}/count`. |
 
-## 6. Common pitfalls
+## 6. History retention and time travel
+
+MongrelDB keeps a durable MVCC history window. You can inspect it, widen it,
+and query older epochs with `AS OF EPOCH`.
+
+```tcl
+puts [mongreldb::historyRetentionEpochs $db]  ;# current window, e.g. 1024
+puts [mongreldb::earliestRetainedEpoch $db]   ;# oldest readable epoch, e.g. 3
+
+# Widen the window. The response contains the updated values.
+set resp [mongreldb::setHistoryRetentionEpochs $db 1000]
+puts [dict get $resp history_retention_epochs]  ;# 1000
+
+# Read the table as it existed at a captured commit epoch.
+mongreldb::put $db orders {1 1 2 99.5}
+set insertEpoch [mongreldb::lastEpoch $db]
+set rows [mongreldb::sql $db "SELECT id, amount FROM orders AS OF EPOCH $insertEpoch"]
+```
+
+Increasing retention cannot restore history that has already been pruned. The
+window is a durable GC/time-travel policy, so it requires admin privileges when
+the daemon is running with auth.
+
+## 7. Common pitfalls
 
 **Using the column name instead of the column id.** Every on-wire API uses the
 numeric `id` from `createTable`, never the `name`. Conditions take the numeric

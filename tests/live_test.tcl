@@ -6,10 +6,11 @@
 # Point at an already-running daemon with the MONGRELDB_URL environment
 # variable. By default this connects to http://127.0.0.1:8453.
 #
-# The 14-operation conformance matrix mirrors the other official clients:
-# health, create_table, drop_table, count, put, upsert, delete (by row id),
-# delete_by_pk, query (pk), query (range), transaction (batch commit),
-# table_names, schema, schema_for, sql, idempotency_key, error not_found.
+# The live conformance matrix mirrors the other official clients: health,
+# create_table, drop_table, count, put, upsert, delete (by row id), delete_by_pk,
+# query (pk), query (range), transaction (batch commit), table_names, schema,
+# schema_for, sql, idempotency_key, error not_found, history retention, and
+# AS OF EPOCH time travel.
 #
 # Run with:
 #   tclsh tests/live_test.tcl
@@ -28,7 +29,8 @@ set g_skip 0
 proc test {name body} {
     global g_pass g_fail g_skip
     puts "== $name"
-    set before $g_fail
+    set beforeFail $g_fail
+    set beforeSkip $g_skip
     # Catch the test-abort/skip signals so one failing/skipped test does not
     # abort the whole run. The body calls fail/skip to record the outcome and
     # then throws one of these signals.
@@ -44,11 +46,8 @@ proc test {name body} {
             }
         }
     }
-    if {$g_fail == $before && [info exists g_skip]} {
-        # skip() increments g_skip already; only count a pass if it neither
-        # failed nor skipped. We detect skip by comparing g_skip too.
-    }
-    if {$g_fail == $before} { incr g_pass }
+    # Count a pass only when the test neither failed nor skipped.
+    if {$g_fail == $beforeFail && $g_skip == $beforeSkip} { incr g_pass }
 }
 
 proc fail {msg} {
@@ -114,6 +113,21 @@ proc freshTable {name cols} {
     global g_client
     catch {mongreldb::dropTable $g_client $name}
     mongreldb::createTable $g_client $name $cols
+}
+
+# Temporarily widen the retention window, run body, then restore the original
+# window even if body throws. Avoids leaking a non-default retention setting
+# to later live tests. Returns the response from the initial setter call.
+proc withRestoredRetention {db tmp body} {
+    set original [mongreldb::historyRetentionEpochs $db]
+    set setResp [mongreldb::setHistoryRetentionEpochs $db $tmp]
+    set code [catch {uplevel 1 $body} err opts]
+    if {$code != 0} {
+        catch {mongreldb::setHistoryRetentionEpochs $db $original}
+        return -options $opts $err
+    }
+    mongreldb::setHistoryRetentionEpochs $db $original
+    return $setResp
 }
 
 # ── Tests (14-operation conformance matrix) ───────────────────────────────
@@ -302,6 +316,49 @@ test test_idempotency_key {
     catch {mongreldb::put $::g_client tcl_idem {1 2} $key}
     set n [mongreldb::count $::g_client tcl_idem]
     check {$n == 1} "expected 1 row after duplicate idempotent commit, got $n"
+}
+
+# 16. history retention round trip
+# 17. AS OF EPOCH time travel
+
+test test_history_retention_round_trip {
+    assertDaemon
+    set original [mongreldb::historyRetentionEpochs $::g_client]
+    check {$original > 0} "expected positive default retention, got $original"
+    # earliest_retained_epoch is 0 until the first commit, which is fine.
+    set earliest [mongreldb::earliestRetainedEpoch $::g_client]
+    check {$earliest >= 0} "expected non-negative earliest retained epoch, got $earliest"
+
+    set updated [withRestoredRetention $::g_client 1000 {
+        set now [mongreldb::historyRetentionEpochs $::g_client]
+        check {$now == 1000} "retention not updated to 1000, got $now"
+    }]
+    check {[dict exists $updated history_retention_epochs]} "setter response missing key"
+}
+
+test test_as_of_epoch_time_travel {
+    assertDaemon
+    set cols [list [intCol 1 id 1] [floatCol 2 amount]]
+    freshTable tcl_pit $cols
+
+    withRestoredRetention $::g_client 10000 {
+        mongreldb::put $::g_client tcl_pit {1 1 2 1.0}
+        set insertEpoch [mongreldb::lastEpoch $::g_client]
+        check {$insertEpoch > 0} "expected positive insert epoch, got $insertEpoch"
+
+        mongreldb::upsert $::g_client tcl_pit {1 1 2 9.0} {2 9.0}
+
+        set histRows [mongreldb::sql $::g_client "SELECT id, amount FROM tcl_pit AS OF EPOCH $insertEpoch"]
+        check {[llength $histRows] == 1} "expected exactly one historical row"
+        set historical [lindex $histRows 0]
+        check {[dict exists $historical id] && [dict get $historical id] == 1} "historical id wrong"
+        check {[dict get $historical amount] == 1.0} "historical amount wrong"
+
+        set currRows [mongreldb::sql $::g_client "SELECT id, amount FROM tcl_pit"]
+        check {[llength $currRows] == 1} "expected exactly one current row"
+        set current [lindex $currRows 0]
+        check {[dict get $current amount] == 9.0} "current amount wrong"
+    }
 }
 
 puts "\n$g_pass passed, $g_fail failed, $g_skip skipped"

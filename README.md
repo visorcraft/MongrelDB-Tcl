@@ -133,8 +133,8 @@ if {[dict get $res truncated]} {
 
 ## Schema constraints
 
-Two optional fields on a column dict let you constrain what goes into a column
-at create time. Both are omitted from the wire JSON when left unset, so
+Optional fields on a column dict let you constrain what goes into a column
+at create time. All are omitted from the wire JSON when left unset, so
 existing schemas are unaffected.
 
 ```tcl
@@ -151,10 +151,11 @@ mongreldb::createTable $db orders $cols
 
 `enum_variants` is a Tcl list of strings; omitting it means "absent".
 `default_value` is a string. Use `default_value_json` for raw null, boolean,
-or number defaults, and `default_expr` for dynamic `now` or `uuid`. The constraint
-is enforced server-side, so a row whose value falls outside the listed variants
-surfaces as a `conflict` error on `mongreldb::put` /
-`mongreldb::transaction`.
+or number defaults, and `default_expr` for dynamic `now` or `uuid`. Literal
+`"now"` and `"uuid"` strings are expressed through `default_value`, not
+`default_expr`. The constraint is enforced server-side, so a row whose value
+falls outside the listed variants surfaces as a `conflict` error on
+`mongreldb::put` / `mongreldb::transaction`.
 The optional fourth argument is a validated JSON object in the daemon's
 `constraints` shape. Its `checks` array is sent as `constraints.checks`.
 
@@ -197,7 +198,7 @@ try {
 | `mongreldb::connect url` | Construct a client (empty url defaults to `http://127.0.0.1:8453`) |
 | `mongreldb::connectWithToken url token` | Bearer token auth (`--auth-token` mode) |
 | `mongreldb::connectWithBasicAuth url user pass` | HTTP Basic auth (`--auth-users` mode) |
-| `mongreldb::close db` | Close the client (no-op for Tcl) |
+| `mongreldb::close db` | Close the client and free per-handle state |
 | `mongreldb::lastError db` | Message for the most recent failure |
 
 ### Database operations
@@ -219,6 +220,10 @@ try {
 | `mongreldb::sql db statement` | Execute SQL |
 | `mongreldb::schema db` | Full schema catalog |
 | `mongreldb::schemaFor db table` | Single-table descriptor |
+| `mongreldb::historyRetentionEpochs db` | Current history-retention window |
+| `mongreldb::earliestRetainedEpoch db` | Oldest epoch still readable with `AS OF EPOCH` |
+| `mongreldb::setHistoryRetentionEpochs db epochs` | Set the durable MVCC window |
+| `mongreldb::lastEpoch db` | Commit epoch of the most recent `/kit/txn` |
 
 ## Building and testing
 
@@ -243,6 +248,29 @@ curl -fsSL -o bin/mongreldb-server \
 chmod +x bin/mongreldb-server
 ```
 
+## History retention
+
+Use `historyRetentionEpochs`, `setHistoryRetentionEpochs`, `earliestRetainedEpoch`,
+and `lastEpoch` with MongrelDB 0.48.0+. The retention window controls how far
+back `AS OF EPOCH` time-travel queries can read; increasing it cannot bring back
+history that has already been pruned.
+
+```tcl
+# Inspect the current durable MVCC window.
+puts [mongreldb::historyRetentionEpochs $db]  ;# e.g. 1024
+puts [mongreldb::earliestRetainedEpoch $db]   ;# e.g. 3
+
+# Widen the window. The response contains the updated values.
+set resp [mongreldb::setHistoryRetentionEpochs $db 1000]
+puts [dict get $resp history_retention_epochs]  ;# 1000
+
+# After a write, lastEpoch holds the commit epoch of the most recent put,
+# upsert, delete, or transaction commit.
+mongreldb::put $db orders {1 1 2 99.5}
+set insertEpoch [mongreldb::lastEpoch $db]
+set rows [mongreldb::sql $db "SELECT id, amount FROM orders AS OF EPOCH $insertEpoch"]
+```
+
 ## Contributing
 
 Contributions are welcome. Please:
@@ -251,10 +279,6 @@ Contributions are welcome. Please:
 2. Add focused tests near your change - the suite must stay green.
 3. Keep the code pure Tcl 8.6+; the only external dependency allowed is `tcllib` (for the `json` package).
 4. Match the existing style: `mongreldb::` namespace, snake/camelCase commands.
-
-## History retention
-
-Use `historyRetentionEpochs`, `setHistoryRetentionEpochs`, and `earliestRetainedEpoch` with MongrelDB 0.48.0+.
 
 ## License
 

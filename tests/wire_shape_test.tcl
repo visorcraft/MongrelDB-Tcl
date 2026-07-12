@@ -1,10 +1,10 @@
 # wire_shape_test.tcl - offline wire-format conformance test for the MongrelDB
 # Tcl client.
 #
-# Does NOT contact a daemon. Serializes a create_table body, a batch txn body,
-# and a query body, then asserts the exact JSON keys and shape the server
-# expects. This catches regressions in the on-wire format without needing a
-# running mongreldb-server.
+# Does NOT contact a daemon. Serializes create_table, batch txn, query, and
+# history-retention bodies, then asserts the exact JSON keys and shape the
+# server expects. This catches regressions in the on-wire format without needing
+# a running mongreldb-server.
 #
 # Run with:
 #   tclsh tests/wire_shape_test.tcl
@@ -54,6 +54,8 @@ test test_create_table_body {
         [dict create id 6 name created_at ty timestamp primary_key 0 nullable 0 default_expr now] \
         [dict create id 7 name enabled ty bool primary_key 0 nullable 0 default_value_json true] \
         [dict create id 8 name optional ty varchar primary_key 0 nullable 1 default_value_json null] \
+        [dict create id 9 name now_literal ty varchar primary_key 0 nullable 0 default_value now] \
+        [dict create id 10 name uuid_literal ty varchar primary_key 0 nullable 0 default_value uuid] \
     ]
     set constraintsJson {{"checks":[{"id":1,"name":"ck_status","expr":{"IsNotNull":4}}]}}
     set body [mongreldb::_createTableBody orders $cols $constraintsJson]
@@ -67,6 +69,10 @@ test test_create_table_body {
     check {[string first {"default_expr":"now"} $body] >= 0} "body missing default_expr"
     check {[string first {"default_value":true} $body] >= 0} "boolean default missing"
     check {[string first {"default_value":null} $body] >= 0} "null default missing"
+    # Literal "now" and "uuid" strings are static defaults, not dynamic exprs.
+    check {[string first {"default_value":"now"} $body] >= 0} "literal now default missing"
+    check {[string first {"default_value":"uuid"} $body] >= 0} "literal uuid default missing"
+    check {[string first {"default_expr":"now"} $body] >= 0} "dynamic now default_expr missing"
     check {[string first {"constraints":} $body] >= 0} "body missing constraints"
     check {[string first {"checks":} $body] >= 0} "body missing constraints.checks"
     check {[string first {"IsNotNull":4} $body] >= 0} "body missing check expression"
@@ -82,6 +88,63 @@ test test_create_table_rejects_non_scalar_default_json {
         set threw 1
     } on error {} {}
     check {$threw == 1} "default_value_json must reject arrays and objects"
+}
+
+# The history-retention endpoints must use the right HTTP method and path, and
+# the setter must emit the new value as raw JSON.
+test test_history_retention_wire_shape {
+    set db [mongreldb::_new http://127.0.0.1:8453]
+    set ::_test_calls {}
+    rename ::mongreldb::_request ::mongreldb::_request_orig
+    proc ::mongreldb::_request {db method path {body {}}} {
+        lappend ::_test_calls [list $method $path $body]
+        return [dict create history_retention_epochs 1024 earliest_retained_epoch 7]
+    }
+    try {
+        set epochs [mongreldb::historyRetentionEpochs $db]
+        check {$epochs == 1024} "historyRetentionEpochs returned wrong value"
+        set earliest [mongreldb::earliestRetainedEpoch $db]
+        check {$earliest == 7} "earliestRetainedEpoch returned wrong value"
+
+        # Both getters issue GET /history/retention.
+        check {[llength $::_test_calls] == 2} "expected two getter calls"
+        set call0 [lindex $::_test_calls 0]
+        check {[lindex $call0 0] eq "GET"} "getter must use GET"
+        check {[lindex $call0 1] eq "history/retention"} "getter path wrong"
+        set call1 [lindex $::_test_calls 1]
+        check {[lindex $call1 0] eq "GET"} "second getter must use GET"
+        check {[lindex $call1 1] eq "history/retention"} "second getter path wrong"
+
+        set ::_test_calls {}
+        set resp [mongreldb::setHistoryRetentionEpochs $db 2048]
+        check {[llength $::_test_calls] == 1} "expected exactly one setter call"
+        set call [lindex $::_test_calls 0]
+        check {[lindex $call 0] eq "PUT"} "setter must use PUT"
+        check {[lindex $call 1] eq "history/retention"} "setter path wrong"
+        check {[string first {"history_retention_epochs":2048} [lindex $call 2]] >= 0} "setter body missing value"
+    } finally {
+        rename ::mongreldb::_request {}
+        rename ::mongreldb::_request_orig ::mongreldb::_request
+        mongreldb::close $db
+    }
+}
+
+# The commit epoch returned by /kit/txn must be stored and returned by lastEpoch.
+test test_last_epoch_capture {
+    set db [mongreldb::_new http://127.0.0.1:8453]
+    rename ::mongreldb::_request ::mongreldb::_request_orig
+    proc ::mongreldb::_request {db method path {body {}}} {
+        return [dict create status committed epoch 42 results {}]
+    }
+    try {
+        check {[mongreldb::lastEpoch $db] eq {}} "lastEpoch should be empty before any commit"
+        mongreldb::put $db orders {1 1}
+        check {[mongreldb::lastEpoch $db] == 42} "lastEpoch not captured after put"
+    } finally {
+        rename ::mongreldb::_request {}
+        rename ::mongreldb::_request_orig ::mongreldb::_request
+        mongreldb::close $db
+    }
 }
 
 # The batch txn body must wrap ops in {"ops":[...]} and carry an idempotency

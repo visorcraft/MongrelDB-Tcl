@@ -1,9 +1,9 @@
 # mongreldb.tcl - Pure Tcl HTTP client for MongrelDB.
 #
 # Talks to a running mongreldb-server daemon's JSON API over the Kit
-# transaction, query, and SQL endpoints. Uses only Tcl stdlib packages
-# (http, json) bundled with a normal Tcl 8.6+ install, so there are no
-# external dependencies.
+# transaction, query, and SQL endpoints. Uses the Tcl 8.6+ core `http` package
+# plus the `json` package from `tcllib`, so the only external dependency is
+# `tcllib`.
 #
 # Usage:
 #   package require mongreldb
@@ -37,10 +37,18 @@ namespace eval ::mongreldb {
         401 auth 403 auth 404 not_found 409 conflict
     }
 
+    # Unique client id generator and commit-epoch storage. The client handle is
+    # an immutable dict, so per-handle mutable state lives in namespace arrays
+    # keyed by the handle's id.
+    variable nextClientId 0
+    variable clientEpoch
+    array set clientEpoch {}
+
     namespace export connect health tables createTable dropTable count \
                           put upsert delete deleteByPk transaction query \
                           condition sql schema schemaFor close lastError \
-                          historyRetentionEpochs earliestRetainedEpoch setHistoryRetentionEpochs
+                          historyRetentionEpochs earliestRetainedEpoch setHistoryRetentionEpochs \
+                          lastEpoch
 }
 
 # ── Error handling ────────────────────────────────────────────────────────
@@ -168,7 +176,11 @@ proc ::mongreldb::_new {url args} {
     }
 
     # The client handle is a dict with the connection state.
-    return [dict create url $u authHeader $authHeader \
+    variable nextClientId
+    variable clientEpoch
+    set id [incr nextClientId]
+    set clientEpoch($id) {}
+    return [dict create id $id url $u authHeader $authHeader \
                 timeout $opts(-timeout) lastError {}]
 }
 
@@ -187,9 +199,13 @@ proc ::mongreldb::connectWithBasicAuth {url username password args} {
     tailcall _new $url -username $username -password $password {*}$args
 }
 
-# Close the client (a no-op for the Tcl client since the handle is a dict).
+# Close the client and free its per-handle state (the handle itself is a dict).
 proc ::mongreldb::close {db} {
-    # Nothing to free; the handle is a plain dict.
+    variable clientEpoch
+    set id [dict get $db id]
+    if {[info exists clientEpoch($id)]} {
+        unset clientEpoch($id)
+    }
     return
 }
 
@@ -300,15 +316,37 @@ proc ::mongreldb::health {db} {
 }
 
 proc ::mongreldb::historyRetentionEpochs {db} {
-    dict get [::json::json2dict [_get $db history/retention]] history_retention_epochs
+    set data [_get $db history/retention]
+    if {[dict exists $data history_retention_epochs]} {
+        return [dict get $data history_retention_epochs]
+    }
+    _error query "history_retention_epochs missing from server response"
 }
 
 proc ::mongreldb::earliestRetainedEpoch {db} {
-    dict get [::json::json2dict [_get $db history/retention]] earliest_retained_epoch
+    set data [_get $db history/retention]
+    if {[dict exists $data earliest_retained_epoch]} {
+        return [dict get $data earliest_retained_epoch]
+    }
+    _error query "earliest_retained_epoch missing from server response"
 }
 
 proc ::mongreldb::setHistoryRetentionEpochs {db epochs} {
+    if {![string is integer -strict $epochs] || $epochs < 0} {
+        _error query "history retention epochs must be a non-negative integer"
+    }
     _request $db PUT history/retention "\{\"history_retention_epochs\":$epochs\}"
+}
+
+# Return the commit epoch of the most recent successful /kit/txn call, or {}
+# before any transaction has committed through this client.
+proc ::mongreldb::lastEpoch {db} {
+    variable clientEpoch
+    set id [dict get $db id]
+    if {[info exists clientEpoch($id)]} {
+        return $clientEpoch($id)
+    }
+    return {}
 }
 
 # List all table names.
@@ -442,6 +480,12 @@ proc ::mongreldb::_commit {db ops idempotencyKey} {
     }
     append body "\}"
     set data [_post $db kit/txn $body]
+    # Capture the commit epoch when the server reports a committed status.
+    if {[dict exists $data status] && [dict get $data status] eq "committed" &&
+        [dict exists $data epoch]} {
+        variable clientEpoch
+        set clientEpoch([dict get $db id]) [dict get $data epoch]
+    }
     if {[dict exists $data results]} {
         return [dict get $data results]
     }

@@ -122,9 +122,81 @@ test test_history_retention_wire_shape {
         check {[lindex $call 0] eq "PUT"} "setter must use PUT"
         check {[lindex $call 1] eq "history/retention"} "setter path wrong"
         check {[string first {"history_retention_epochs":2048} [lindex $call 2]] >= 0} "setter body missing value"
+        check {[string first {earliest_retained_epoch} [lindex $call 2]] < 0} "setter body must not contain earliest_retained_epoch"
     } finally {
         rename ::mongreldb::_request {}
         rename ::mongreldb::_request_orig ::mongreldb::_request
+        mongreldb::close $db
+    }
+}
+
+# A non-2xx HTTP response must surface as a typed MONGRELDB error whose code
+# carries the category and status. The http layer is stubbed so _request sees a
+# controlled status code and body without contacting a daemon.
+test test_history_retention_error_propagation {
+    set db [mongreldb::_new http://127.0.0.1:8453]
+
+    # Stub the ::http::* procs that _request depends on. Save the originals so
+    # they can be restored in the finally block.
+    foreach p {geturl ncode data error cleanup} {
+        if {[llength [info commands ::http::${p}_orig]] == 0} {
+            rename ::http::$p ::http::${p}_orig
+        }
+    }
+    set ::_mock_http_status 500
+    set ::_mock_http_body {{"error":{"message":"boom","code":"INTERNAL"}}}
+    proc ::http::geturl {args} { return MOCK_TOKEN }
+    proc ::http::ncode {token} { return $::_mock_http_status }
+    proc ::http::data {token} { return $::_mock_http_body }
+    proc ::http::error {token} { return {} }
+    proc ::http::cleanup {token} {}
+
+    try {
+        # 500 maps to the query category.
+        set ::_mock_http_status 500
+        set threw 0
+        set errcode {}
+        try {
+            mongreldb::historyRetentionEpochs $db
+        } trap {MONGRELDB query} {msg opts} {
+            set threw 1
+            set errcode [dict get $opts -errorcode]
+        } on error {msg opts} {
+            # Some Tcl builds tag the rethrow differently; accept any MONGRELDB code.
+            set threw 1
+            set errcode [dict get $opts -errorcode]
+        }
+        check {$threw == 1} "500 must raise a typed MONGRELDB error"
+        check {[lindex $errcode 0] eq "MONGRELDB"} "errorcode must begin with MONGRELDB"
+        check {[lindex $errcode 1] eq "query"} "500 must map to the query category"
+        check {[lindex $errcode 2] == 500} "errorcode must carry status 500"
+
+        # 404 maps to the not_found category.
+        set ::_mock_http_status 404
+        set ::_mock_http_body {{"error":{"message":"missing","code":"NOT_FOUND"}}}
+        set threw 0
+        set errcode {}
+        try {
+            mongreldb::earliestRetainedEpoch $db
+        } trap {MONGRELDB not_found} {msg opts} {
+            set threw 1
+            set errcode [dict get $opts -errorcode]
+        } on error {msg opts} {
+            set threw 1
+            set errcode [dict get $opts -errorcode]
+        }
+        check {$threw == 1} "404 must raise a typed MONGRELDB error"
+        check {[lindex $errcode 1] eq "not_found"} "404 must map to the not_found category"
+        check {[lindex $errcode 2] == 404} "errorcode must carry status 404"
+    } finally {
+        # Restore the original ::http::* procs.
+        foreach p {geturl ncode data error cleanup} {
+            if {[llength [info commands ::http::${p}_orig]] > 0} {
+                rename ::http::$p {}
+                rename ::http::${p}_orig ::http::$p
+            }
+        }
+        unset -nocomplain ::_mock_http_status ::_mock_http_body
         mongreldb::close $db
     }
 }

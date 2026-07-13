@@ -215,7 +215,7 @@ try {
 | `mongreldb::delete db table rowId` | Delete by row id |
 | `mongreldb::deleteByPk db table pk` | Delete by primary key |
 | `mongreldb::transaction db ops key` | Commit a batch atomically |
-| `mongreldb::query db table conds proj limit` | Run a native query |
+| `mongreldb::query db table conds proj limit offset` | Run a paged native query |
 | `mongreldb::condition type params` | Build a query condition |
 | `mongreldb::sql db statement` | Execute SQL |
 | `mongreldb::schema db` | Full schema catalog |

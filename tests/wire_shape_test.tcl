@@ -230,12 +230,13 @@ test test_txn_body_with_key {
 
 # The query body must serialize conditions, projection, and limit.
 test test_query_body {
-    set body "\{\"table\":\"orders\",\"conditions\":\[\{\"range\":\{\"column_id\":3,\"lo\":100.0,\"hi\":500.0\}\}\],\"projection\":\[1,2\],\"limit\":100\}"
+    set body "\{\"table\":\"orders\",\"conditions\":\[\{\"range\":\{\"column_id\":3,\"lo\":100.0,\"hi\":500.0\}\}\],\"projection\":\[1,2\],\"limit\":100,\"offset\":12000\}"
     check {[string first {"table":"orders"} $body] >= 0} "query body missing table"
     check {[string first {range} $body] >= 0} "query body missing range condition"
     check {[string first {column_id} $body] >= 0} "query body missing column_id"
     check {[string first {projection} $body] >= 0} "query body missing projection"
     check {[string first {"limit":100} $body] >= 0} "query body missing limit"
+    check {[string first {"offset":12000} $body] >= 0} "query body missing offset"
 }
 
 # Table names with special characters must be percent-encoded in path segments.

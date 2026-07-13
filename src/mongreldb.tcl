@@ -614,7 +614,7 @@ proc ::mongreldb::_serializeCondition {cond} {
 # Run a native query. conditions (or {}) is a list of condition dicts (see
 # condition). projection (or {}) restricts returned column ids; limit (or 0)
 # caps the count. Returns a dict with rows and truncated keys.
-proc ::mongreldb::query {db table {conditions {}} {projection {}} {limit 0}} {
+proc ::mongreldb::query {db table {conditions {}} {projection {}} {limit 0} {offset 0}} {
     set body "\{\"table\":\"[_jsonEscape $table]\""
     if {$conditions ne {}} {
         append body ",\"conditions\":\["
@@ -638,6 +638,9 @@ proc ::mongreldb::query {db table {conditions {}} {projection {}} {limit 0}} {
     }
     if {$limit > 0} {
         append body ",\"limit\":[expr {wide($limit)}]"
+    }
+    if {$offset != 0} {
+        append body ",\"offset\":[expr {wide($offset)}]"
     }
     append body "\}"
     set data [_post $db kit/query $body]

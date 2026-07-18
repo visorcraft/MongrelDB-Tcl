@@ -18,7 +18,7 @@ package require http
 package require json
 package require Tcl 8.6
 
-package provide mongreldb 0.55.0
+package provide mongreldb 0.59.1
 
 # Empty namespace eval to hold all commands. Every public command takes the
 # client handle (returned by connect) as its first argument.
@@ -227,7 +227,7 @@ proc ::mongreldb::_request {db method path {body {}}} {
     # header could follow a redirect to an attacker-controlled host), and set
     # the User-Agent.
     set oldAgent $::http::defaultCharset
-    ::http::config -useragent "mongreldb-tcl/0.55.0"
+    ::http::config -useragent "mongreldb-tcl/0.59.1"
 
     set headers [list Accept {application/json}]
     if {[dict get $db authHeader] ne {}} {

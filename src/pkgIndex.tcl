@@ -6,4 +6,4 @@
 #
 # Licensing: MIT OR Apache-2.0.
 
-package ifneeded mongreldb 0.61.1 [list source [file join $dir mongreldb.tcl]]
+package ifneeded mongreldb 0.62.0 [list source [file join $dir mongreldb.tcl]]

@@ -259,6 +259,26 @@ test test_condition_builder {
     check {[dict get $fm fm_contains pattern] eq "database"} "fm_contains must map value->pattern"
 }
 
+test test_complete_ai_conditions {
+    set ann [mongreldb::conditionJson \
+        {{"ann":{"column_id":2,"query":[0.1,0.2],"k":10}}}]
+    check {[mongreldb::_serializeCondition $ann] eq \
+        {{"ann":{"column_id":2,"query":[0.1,0.2],"k":10}}}} \
+        "ANN condition changed"
+
+    set sparse [mongreldb::conditionJson \
+        {{"sparse_match":{"column_id":3,"query":[[7,0.5]],"k":5}}}]
+    check {[string first {"sparse_match"} \
+        [mongreldb::_serializeCondition $sparse]] >= 0} \
+        "sparse condition missing"
+
+    set minhash [mongreldb::conditionJson \
+        {{"minhash_similar_members":{"column_id":4,"members":["a","b"],"k":5}}}]
+    check {[string first {"minhash_similar_members"} \
+        [mongreldb::_serializeCondition $minhash]] >= 0} \
+        "MinHash condition missing"
+}
+
 # CR/LF in an auth credential must be rejected (header-injection guard).
 test test_crlf_rejection {
     set threw 0

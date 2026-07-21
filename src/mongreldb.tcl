@@ -46,7 +46,7 @@ namespace eval ::mongreldb {
 
     namespace export connect health tables createTable dropTable count \
                           put upsert delete deleteByPk transaction query \
-                          condition sql schema schemaFor close lastError \
+                          condition conditionJson sql schema schemaFor close lastError \
                           historyRetentionEpochs earliestRetainedEpoch setHistoryRetentionEpochs \
                           lastEpoch
 }
@@ -357,7 +357,7 @@ proc ::mongreldb::tables {db} {
 }
 
 # Build the create-table JSON once so the live path and wire test cannot drift.
-proc ::mongreldb::_createTableBody {name columns {constraintsJson {}}} {
+proc ::mongreldb::_createTableBody {name columns {constraintsJson {}} {indexesJson {}}} {
     set body "\{\"name\":\"[_jsonEscape $name]\",\"columns\":\["
     set first 1
     foreach col $columns {
@@ -394,6 +394,13 @@ proc ::mongreldb::_createTableBody {name columns {constraintsJson {}}} {
         if {[dict exists $col default_expr]} {
             append body ",\"default_expr\":\"[_jsonEscape [dict get $col default_expr]]\""
         }
+        if {[dict exists $col embedding_source_json]} {
+            set source [string trim [dict get $col embedding_source_json]]
+            if {[string index $source 0] ne "\{" || [catch {::json::json2dict $source}]} {
+                _error query {embedding_source_json must be a valid JSON object}
+            }
+            append body ",\"embedding_source\":$source"
+        }
         append body "\}"
     }
     append body "\]"
@@ -405,14 +412,21 @@ proc ::mongreldb::_createTableBody {name columns {constraintsJson {}}} {
         }
         append body ",\"constraints\":$constraintsJson"
     }
+    set indexesJson [string trim $indexesJson]
+    if {$indexesJson ne {}} {
+        if {[string index $indexesJson 0] ne "\[" || [catch {::json::json2dict $indexesJson}]} {
+            _error query {indexesJson must be a valid JSON array}
+        }
+        append body ",\"indexes\":$indexesJson"
+    }
     append body "\}"
     return $body
 }
 
 # Create a table. constraintsJson is an optional JSON object using the daemon's
 # TableConstraints shape, including constraints.checks.
-proc ::mongreldb::createTable {db name columns {constraintsJson {}}} {
-    set body [_createTableBody $name $columns $constraintsJson]
+proc ::mongreldb::createTable {db name columns {constraintsJson {}} {indexesJson {}}} {
+    set body [_createTableBody $name $columns $constraintsJson $indexesJson]
     set data [_post $db kit/create_table $body]
     if {[dict exists $data table_id]} {
         return [dict get $data table_id]
@@ -578,6 +592,17 @@ proc ::mongreldb::condition {type params} {
     }
 }
 
+# Build any complete externally-tagged JsonCondition. This covers every server
+# condition, including ANN, sparse, MinHash, bitmap-in, and FM-index-all.
+proc ::mongreldb::conditionJson {conditionJson} {
+    set conditionJson [string trim $conditionJson]
+    if {[string index $conditionJson 0] ne "\{" ||
+        [catch {::json::json2dict $conditionJson}]} {
+        _error query {conditionJson must be a valid JSON object}
+    }
+    return [dict create __raw_json $conditionJson]
+}
+
 # Render a value as a JSON boolean. Tcl has no distinct boolean type, so accept
 # the usual truthy spellings (true/false, yes/no, 1/0, on/off). Anything that is
 # not a recognized false value is treated as true, mirroring Tcl's [expr].
@@ -591,6 +616,9 @@ proc ::mongreldb::_jsonBool {v} {
 
 # Serialize a condition dict to JSON.
 proc ::mongreldb::_serializeCondition {cond} {
+    if {[dict exists $cond __raw_json]} {
+        return [dict get $cond __raw_json]
+    }
     set type [lindex [dict keys $cond] 0]
     set inner [dict get $cond $type]
     set s "\{\"$type\":\{"

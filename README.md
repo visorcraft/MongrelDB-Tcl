@@ -207,7 +207,7 @@ try {
 |---------|-------------|
 | `mongreldb::health db` | Check daemon health |
 | `mongreldb::tables db` | List table names |
-| `mongreldb::createTable db name cols ?constraintsJson?` | Create a table |
+| `mongreldb::createTable db name cols ?constraintsJson? ?indexesJson?` | Create a table with optional constraints and all index definitions |
 | `mongreldb::dropTable db name` | Drop a table |
 | `mongreldb::count db table` | Row count |
 | `mongreldb::put db table cells key` | Insert a row |
@@ -217,6 +217,7 @@ try {
 | `mongreldb::transaction db ops key` | Commit a batch atomically |
 | `mongreldb::query db table conds proj limit offset` | Run a paged native query |
 | `mongreldb::condition type params` | Build a query condition |
+| `mongreldb::conditionJson json` | Build any complete condition, including ANN, sparse, and MinHash |
 | `mongreldb::sql db statement` | Execute SQL |
 | `mongreldb::schema db` | Full schema catalog |
 | `mongreldb::schemaFor db table` | Single-table descriptor |

@@ -130,6 +130,14 @@ test test_history_retention_wire_shape {
     }
 }
 
+test test_create_table_ann_backend_options {
+    set indexes {[{"name":"ann","column_id":2,"kind":"ann","options":{"ann":{"algorithm":"diskann","quantization":"dense","diskann":{"r":64,"l":128,"beam_width":8,"alpha":120}}}}]}
+    set body [mongreldb::_createTableBody vectors {} {} $indexes]
+    check {[string first {"algorithm":"diskann"} $body] >= 0} "ANN algorithm missing"
+    check {[string first {"quantization":"dense"} $body] >= 0} "ANN quantization missing"
+    check {[string first {"beam_width":8} $body] >= 0} "DiskANN options missing"
+}
+
 # A non-2xx HTTP response must surface as a typed MONGRELDB error whose code
 # carries the category and status. The http layer is stubbed so _request sees a
 # controlled status code and body without contacting a daemon.
